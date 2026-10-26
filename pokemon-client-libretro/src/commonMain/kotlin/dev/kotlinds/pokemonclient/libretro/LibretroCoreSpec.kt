@@ -5,6 +5,14 @@ import kotlinx.io.IOException
 import kotlinx.io.files.Path
 
 /**
+ * A locally built core (not downloaded from the libretro buildbot), e.g. a fixed-RTC rollback build.
+ *
+ * @param envVar environment variable holding the absolute path to the core file. When it is not set,
+ *   the core is looked up as `<cores directory>/<buildbotName>.<platform extension>`.
+ */
+data class LocalCore(val envVar: String)
+
+/**
  * A libretro core we know how to run: where to download it and which options to give it.
  *
  * Adding another emulator (e.g. mGBA for GBA Pokémon games) is mostly adding an entry here.
@@ -22,6 +30,13 @@ enum class LibretroCoreSpec(
     private val pinnedSha256: Map<String, String> = emptyMap(),
     /** How the core stores the in-game save on disk (the app keeps `<rom>.sav` as the canonical file). */
     val saveFormat: SaveFormat = SaveFormat.RAW,
+    /**
+     * When set, this core is not downloaded: it is a locally built binary (e.g. a fixed-RTC rollback
+     * build). [LocalCore.envVar] points at it, or it is looked up as `<directory>/<buildbotName>.<ext>`.
+     */
+    val localCore: LocalCore? = null,
+    /** True when this build is deterministic enough for `Mode.ROLLBACK` (fixed RTC). */
+    val rollbackSafe: Boolean = false,
 ) {
     /**
      * melonDS 0.9.3 (libretro port). We don't use the newer "melonDS DS" core because its ARM JIT
@@ -62,6 +77,48 @@ enum class LibretroCoreSpec(
         pinnedSha256 = mapOf("apple/osx/arm64" to "33845ef6ffc0ca2fc5203e58a1f1dc608ba90e8e9b140de109d52b14ccec3c17"),
         saveFormat = SaveFormat.DESMUME,
     ),
+
+    /**
+     * melonDS 0.9.3 built with the fixed-RTC patch (`libretro-rollback/docs/patches/melonds-rtc.patch`):
+     * the RTC advances from emulated frames instead of the host clock, which makes the core
+     * deterministic for rollback netcode. Same options as [MELONDS].
+     */
+    MELONDS_ROLLBACK(
+        buildbotName = "melonds_libretro_rollback",
+        options = mapOf(
+            "melonds_console_mode" to "DS",
+            "melonds_boot_directly" to "enabled",
+            "melonds_threaded_renderer" to "disabled",
+            "melonds_screen_layout" to "Top/Bottom",
+            "melonds_touch_mode" to "Touch",
+            "melonds_language" to "English",
+        ),
+        pinnedSha256 = mapOf("apple/osx/arm64" to "99e84ea1dd26ac47a41db34812af35947479234d22d1df3fc56084e56324c343"),
+        localCore = LocalCore("POKEMON_MELONDS_ROLLBACK_CORE"),
+        rollbackSafe = true,
+    ),
+
+    /**
+     * DeSmuME built with the fixed-RTC patch (`libretro-rollback/docs/patches/desmume-rtc.patch`):
+     * same options and save format as [DESMUME], deterministic RTC for rollback netcode.
+     */
+    DESMUME_ROLLBACK(
+        buildbotName = "desmume_libretro_rollback",
+        options = mapOf(
+            "desmume_cpu_mode" to "interpreter",
+            "desmume_screens_layout" to "top/bottom",
+            "desmume_screens_gap" to "0",
+            "desmume_pointer_mouse" to "enabled",
+            "desmume_pointer_type" to "touch",
+            "desmume_firmware_language" to "English",
+            "desmume_frameskip" to "0",
+            "desmume_internal_resolution" to "256x192",
+        ),
+        pinnedSha256 = mapOf("apple/osx/arm64" to "666205db785eac56d9e924782ba1771f21a58e432e0a765e74dd54cd310b8e50"),
+        localCore = LocalCore("POKEMON_DESMUME_ROLLBACK_CORE"),
+        rollbackSafe = true,
+        saveFormat = SaveFormat.DESMUME,
+    ),
     ;
 
     companion object {
@@ -73,13 +130,28 @@ enum class LibretroCoreSpec(
             "nds" -> entries.firstOrNull { it.name.equals(preferred, ignoreCase = true) } ?: DESMUME
             else -> throw IllegalArgumentException("No emulator core configured for $rom")
         }
+
+        /**
+         * Picks the rollback-safe build for [rom] when one exists (fixed RTC), otherwise the normal core.
+         * The caller still decides the netplay mode; see `LibretroCoreSpec.rollbackSafe`.
+         */
+        fun forRomRollback(rom: Path, preferred: String? = null): LibretroCoreSpec =
+            forRom(rom, preferred).rollbackVariant ?: forRom(rom, preferred)
     }
 
     /** How this core's save states are read and spliced by music during pauses. */
     val soundSplicer: SavestateSoundSplicer
         get() = when (this) {
-            MELONDS -> SavestateSoundSplicer.MELONDS
-            DESMUME -> SavestateSoundSplicer.DESMUME
+            MELONDS, MELONDS_ROLLBACK -> SavestateSoundSplicer.MELONDS
+            DESMUME, DESMUME_ROLLBACK -> SavestateSoundSplicer.DESMUME
+        }
+
+    /** The patched, rollback-safe build of this core, or null when there is none. */
+    val rollbackVariant: LibretroCoreSpec?
+        get() = when (this) {
+            MELONDS -> MELONDS_ROLLBACK
+            DESMUME -> DESMUME_ROLLBACK
+            else -> null
         }
 
     /**
@@ -98,9 +170,14 @@ enum class LibretroCoreSpec(
         return copy.also { verify(it, platform) }
     }
 
-    /** Downloads the core from the libretro buildbot into [directory] if it isn't there yet. */
+    /**
+     * Returns the core file: the locally built one for a [localCore] spec (verified against its
+     * pinned hash), otherwise the buildbot download in [directory] (downloaded if needed).
+     */
     fun resolve(directory: Path): Path {
         val platform = currentCorePlatform()
+        if (localCore != null) return resolveLocal(directory, platform)
+
         val target = Path(directory, "$buildbotName.${platform.extension}")
         if (Files.exists(target)) return target.also { verify(it, platform) }
 
@@ -114,6 +191,26 @@ enum class LibretroCoreSpec(
         return target
     }
 
+    /**
+     * Resolves a locally built core: the path in [LocalCore.envVar], or `<directory>/<name>.<ext>`.
+     * The file must exist and match the pinned hash, so a patched build cannot be confused with
+     * another one.
+     */
+    private fun resolveLocal(directory: Path, platform: CorePlatform): Path {
+        val local = localCore ?: error("not a local core")
+        Files.createDirectories(directory)
+        val fromEnv = environmentVariable(local.envVar)?.takeIf { it.isNotBlank() }
+        val file = if (fromEnv != null) Path(fromEnv) else Path(directory, "$buildbotName.${platform.extension}")
+        if (!Files.exists(file)) {
+            throw IOException(
+                "Rollback core $name not found at $file. Build it with the patch in " +
+                    "libretro-rollback/docs/patches, then set ${local.envVar} to its path or copy it there.",
+            )
+        }
+        verify(file, platform)
+        return file
+    }
+
     /** Checks the core file against the pinned hash of its platform (see [pinnedSha256]). */
     private fun verify(file: Path, platform: CorePlatform) = verify(Files.readBytes(file), file, platform)
 
@@ -124,7 +221,7 @@ enum class LibretroCoreSpec(
         if (actual != expected) {
             throw IOException(
                 "Unexpected $buildbotName build at $file (sha256 $actual, expected $expected). " +
-                    "The buildbot's latest build changed: test it, then update the pinned hash in LibretroCoreSpec.",
+                    "Rebuild the core or update the pinned hash in LibretroCoreSpec.",
             )
         }
     }

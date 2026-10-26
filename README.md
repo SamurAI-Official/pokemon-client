@@ -24,6 +24,10 @@ to let AIs play Pokémon HeartGold / SoulSilver and Platinum.
   [libretro-kmp](https://github.com/kotlinds/libretro-kmp): `LibretroConsole` (the `ConsolePort` adapter), the known
   cores (DeSmuME, melonDS; pinned downloads checked by SHA-256), save formats, the sound state splicing used for music
   during pauses, and a headless **bench**.
+- **`pokemon-client-rollback`** (JVM) connects the standalone
+  [libretro-rollback](../libretro-rollback) engine to `LibretroConsole`: `ConsoleRollbackCore`, a second controller
+  slot, and a non-presenting `runFrame` for re-simulation. It synchronizes controller inputs to one emulated console;
+  it is not a DS wireless-link implementation.
 
 ```
  ┌──────────────── pokemon-client (dev.kotlinds.pokemonclient) ───────────┐

@@ -19,3 +19,7 @@ include(":pokemon-client")
 // Runs the client on a libretro core (ConsolePort adapter, cores, saves) and its headless bench: the only bridge
 // between the client and an emulator.
 include(":pokemon-client-libretro")
+
+// Rollback netcode adapter over LibretroConsole. It depends on the standalone `libretro-rollback` engine
+// (published to mavenLocal by ../libretro-rollback/scripts/publish-libretro-rollback.sh).
+include(":pokemon-client-rollback")

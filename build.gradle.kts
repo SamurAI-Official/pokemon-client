@@ -21,6 +21,7 @@ allprojects {
     project.ext.set("scm.url", "https://github.com/kotlinds/pokemon-client.git")
 
     repositories {
+        mavenLocal() // dev.kotlinds:libretro-rollback (see ../libretro-rollback)
         mavenCentral()
     }
 }
@@ -28,7 +29,9 @@ allprojects {
 dependencies {
     dokka(projects.pokemonClient)
     dokka(projects.pokemonClientLibretro)
+    dokka(projects.pokemonClientRollback)
 
     kover(projects.pokemonClient)
     kover(projects.pokemonClientLibretro)
+    kover(projects.pokemonClientRollback)
 }
