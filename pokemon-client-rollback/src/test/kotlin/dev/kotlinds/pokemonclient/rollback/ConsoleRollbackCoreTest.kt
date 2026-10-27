@@ -2,6 +2,7 @@ package dev.kotlinds.pokemonclient.rollback
 
 import dev.kotlinds.libretrokmp.JoypadButton
 import dev.kotlinds.pokemonclient.console.Button
+import dev.kotlinds.pokemonclient.console.InputFrame
 import dev.kotlinds.pokemonclient.console.TouchPoint
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -90,5 +91,32 @@ class ConsoleRollbackCoreTest {
         assertFailsWith<IllegalArgumentException> { ConsoleRollbackCore.requireContentHash("") }
         assertFailsWith<IllegalArgumentException> { ConsoleRollbackCore.requireContentHash("   ") }
         ConsoleRollbackCore.requireContentHash("0f1e2d")
+    }
+
+    /** What the app packs for the local player must decode back to the same input. */
+    @Test
+    fun encodeRoundTripsThroughDecode() {
+        val input = InputFrame(setOf(Button.A, Button.RIGHT, Button.START), TouchPoint(40, 150))
+        val blob = ConsoleRollbackCore.encode(input, into = ByteArray(ConsoleRollbackCore.INPUT_SIZE * 2))
+
+        val decoded = ConsoleRollbackCore.decode(blob, 0)
+        assertEquals(input.buttons, decoded.buttons)
+        assertEquals(input.touch, decoded.touch)
+        // A single-player blob leaves the second player's slot empty.
+        assertEquals(emptySet(), ConsoleRollbackCore.decode(blob, 1).buttons)
+        assertNull(ConsoleRollbackCore.decode(blob, 1).touch)
+    }
+
+    @Test
+    fun encodeClampsTouchAndClearsAReleasedStylus() {
+        val outside = ConsoleRollbackCore.encode(InputFrame(setOf(Button.A), TouchPoint(9_000, -3)))
+        assertEquals(TouchPoint(255, 0), ConsoleRollbackCore.decode(outside, 0).touch)
+
+        // The buffer is reused: a frame without a touch must not keep the previous pressed byte.
+        val reused = ByteArray(ConsoleRollbackCore.INPUT_SIZE)
+        ConsoleRollbackCore.encode(InputFrame(setOf(Button.B), TouchPoint(10, 20)), into = reused)
+        ConsoleRollbackCore.encode(InputFrame(setOf(Button.B)), into = reused)
+        assertNull(ConsoleRollbackCore.decode(reused, 0).touch)
+        assertEquals(setOf(Button.B), ConsoleRollbackCore.decode(reused, 0).buttons)
     }
 }

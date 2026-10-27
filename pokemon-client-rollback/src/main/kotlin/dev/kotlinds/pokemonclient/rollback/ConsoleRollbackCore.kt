@@ -101,6 +101,9 @@ class ConsoleRollbackCore(
             JoypadButton.R to Button.R,
         )
 
+        /** The same mapping the other way, for [encode]. */
+        private val BUTTON_IDS: Map<Button, Int> = BUTTONS.entries.associate { (id, button) -> button to id }
+
         /**
          * Decodes one player's 16-byte blob into an [InputFrame].
          *
@@ -127,6 +130,42 @@ class ConsoleRollbackCore(
                 null
             }
             return InputFrame(buttons, touch)
+        }
+
+        /**
+         * Packs [input] into one player's 16-byte blob (the inverse of [decode]), clamped to
+         * [platform]'s screens. The caller passes the blob to `RollbackSession.addLocalInput`.
+         *
+         * [into] may be a reused buffer of at least [INPUT_SIZE] bytes; the blob is written at its
+         * start. A touch point is only sent when [InputFrame.touch] is set (a released stylus is a
+         * zero pressed byte).
+         */
+        fun encode(input: InputFrame, platform: Platform = Platform.NINTENDO_DS, into: ByteArray = ByteArray(INPUT_SIZE)): ByteArray {
+            require(into.size >= INPUT_SIZE) { "the buffer must hold at least $INPUT_SIZE bytes" }
+            java.util.Arrays.fill(into, 0, INPUT_SIZE, 0)
+            var mask = 0
+            for (button in input.buttons) {
+                BUTTON_IDS[button]?.let { id -> mask = mask or (1 shl id) }
+            }
+            writeInt(into, 0, mask)
+            input.touch?.let { point ->
+                writeShort(into, 4, point.x.coerceIn(0, platform.screenWidth - 1))
+                writeShort(into, 6, point.y.coerceIn(0, platform.screenHeight - 1))
+                into[8] = 1
+            }
+            return into
+        }
+
+        private fun writeInt(data: ByteArray, offset: Int, value: Int) {
+            data[offset] = value.toByte()
+            data[offset + 1] = (value ushr 8).toByte()
+            data[offset + 2] = (value ushr 16).toByte()
+            data[offset + 3] = (value ushr 24).toByte()
+        }
+
+        private fun writeShort(data: ByteArray, offset: Int, value: Int) {
+            data[offset] = value.toByte()
+            data[offset + 1] = (value ushr 8).toByte()
         }
 
         private fun optionsHash(options: Map<String, String>): Long {
