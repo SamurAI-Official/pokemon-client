@@ -21,8 +21,40 @@ allprojects {
     project.ext.set("scm.url", "https://github.com/kotlinds/pokemon-client.git")
 
     repositories {
-        mavenLocal() // dev.kotlinds:libretro-rollback (see ../libretro-rollback)
+        // The engine (dev.kotlinds:libretro-rollback) comes from GitHub Packages now: published there by its own
+        // workflow, so a clean clone builds without a local `publishToMavenLocal` (mavenLocal still wins when
+        // something was published locally while developing).
+        mavenLocal()
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/SamurAI-Official/pokemon-client")
+            content { includeGroup("dev.kotlinds") }
+            credentials {
+                username = System.getenv("GITHUB_ACTOR") ?: findProperty("gpr.user")?.toString()
+                password = System.getenv("GITHUB_TOKEN") ?: findProperty("gpr.key")?.toString()
+            }
+        }
         mavenCentral()
+    }
+}
+
+// Where the fork publishes: GitHub Packages, one URL per repository, all of them views of the same owner's packages
+// (the app resolves dev.kotlinds from the project repository's URL). Publishing needs `packages: write`; see
+// .github/workflows/publish.yml. Upstream's Maven Central path stays configured but only runs with its own secrets.
+subprojects {
+    plugins.withId("maven-publish") {
+        extensions.configure<PublishingExtension>("publishing") {
+            repositories {
+                maven {
+                    name = "GitHubPackages"
+                    url = uri("https://maven.pkg.github.com/SamurAI-Official/pokemon-client")
+                    credentials {
+                        username = System.getenv("GITHUB_ACTOR") ?: findProperty("gpr.user")?.toString()
+                        password = System.getenv("GITHUB_TOKEN") ?: findProperty("gpr.key")?.toString()
+                    }
+                }
+            }
+        }
     }
 }
 

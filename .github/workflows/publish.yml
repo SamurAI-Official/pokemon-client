@@ -1,0 +1,43 @@
+# Publishes the fork's artifacts to GitHub Packages, so the app (and anything else) resolves
+# `dev.kotlinds:pokemon-client{,-libretro,-rollback}:0.1.2-SNAPSHOT` from a clean clone instead of a local
+# `publishToMavenLocal`. The engine it depends on (dev.kotlinds:libretro-rollback) is published the same way by
+# SamurAI-Official/libretro-rollback — run that one first when the engine changed.
+#
+# Run it from Actions → publish → Run workflow, or push a tag: a release is what the app pins, a branch push is not.
+name: publish
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write # publish to GitHub Packages
+
+jobs:
+  github-packages:
+    name: GitHub Packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up the JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The engine comes from GitHub Packages (see build.gradle.kts): the token is what reads it.
+      - name: Publish the client, its libretro adapter and its rollback adapter
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./gradlew --no-daemon \
+            :pokemon-client:publishAllPublicationsToGitHubPackagesRepository \
+            :pokemon-client-libretro:publishAllPublicationsToGitHubPackagesRepository \
+            :pokemon-client-rollback:publishAllPublicationsToGitHubPackagesRepository

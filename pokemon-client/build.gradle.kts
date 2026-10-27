@@ -12,8 +12,13 @@ plugins {
 
 mavenPublishing {
     configure(KotlinMultiplatform(javadocJar = JavadocJar.Empty(), sourcesJar = SourcesJar.Sources()))
-    publishToMavenCentral()
-    signAllPublications()
+    // Maven Central is upstream's channel: publishing there needs its namespace and a GPG key. This fork publishes to
+    // GitHub Packages instead (.github/workflows/publish.yml), where neither is needed, so Central is only set up when
+    // its secrets are there (MAVEN_CENTRAL=true) — the same build file serves both.
+    if (System.getenv("MAVEN_CENTRAL") == "true") {
+        publishToMavenCentral()
+        signAllPublications()
+    }
     pom {
         name.set("pokemon-client")
         description.set("Kotlin Multiplatform client for Pokémon games: reads a game from its RAM and ROM into a typed model and plays it through typed, self-checking actions")
