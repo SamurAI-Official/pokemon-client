@@ -65,5 +65,8 @@ dependencies {
 
     kover(projects.pokemonClient)
     kover(projects.pokemonClientLibretro)
-    kover(projects.pokemonClientRollback)
+    // pokemon-client-rollback is left out of the aggregated report on purpose: it depends on the engine
+    // (dev.kotlinds:libretro-rollback), which comes from a repository and not from this build, and kover cannot
+    // resolve a kover variant of an external artifact ("No matching variant ... attribute 'org.gradle.usage' with
+    // value 'kover'"), so aggregating it fails the whole report. Its own tests still run with the build.
 }
