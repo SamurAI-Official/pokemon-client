@@ -1,0 +1,78 @@
+name: Bug report
+description: A wrong read, an action that fails, a crash — on a game, or in the library's own API
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the library. If the problem is in the **app** (the window, the AI, the picker), report it on
+        [ai-plays-online](https://github.com/SamurAI-Official/ai-plays-online/issues) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you asked for, what you expected, what you got. A code snippet or the failing assertion is ideal.
+    validations:
+      required: true
+
+  - type: input
+    id: game
+    attributes:
+      label: Game (and region/revision)
+      placeholder: Pokémon HeartGold (USA)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: how
+    attributes:
+      label: How are you using it?
+      options:
+        - Through the app (ai-plays-online)
+        - The headless bench (pokemon-client-libretro)
+        - My own code
+        - The library's own test suite
+    validations:
+      required: true
+
+  - type: dropdown
+    id: support
+    attributes:
+      label: How much support does the game have?
+      options:
+        - Typed reader (RAM state)
+        - Screen only
+        - Not sure
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The published version, or the commit you built (`git rev-parse --short HEAD`).
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log, stack trace or reproduction
+      description: Whatever you have — a stack trace, the action's error, the values you read and the ones you expected.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before filing
+      options:
+        - label: I dumped the ROM myself (no game, BIOS or firmware is included, and we cannot help with ROMs)
+          required: true
+        - label: I searched the existing issues for this
+          required: true
+        - label: This is not a security issue (see SECURITY.md on the app repository)
+          required: true
